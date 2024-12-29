@@ -136,6 +136,99 @@ return lc3.memory[0x3200]
 `,
     testCases: '5,6,7,8,9,10',
   },
+  lab5: {
+    testCode: `    
+    const RANDOM = false;
+
+    // randomize lc3.r
+    if (RANDOM) {
+        for (let i = 0; i < 8; i++) {
+            lc3.r[i] = Math.floor(Math.random() * 65536);
+        }
+    }
+    
+    // testcase is an string of "0" and "1"
+    // find how many "1010" in testcase using state machine
+    let count = 0;
+    let state = 0;
+    for (let i = 0; i < testcase.length; i++) {
+        if (state === 0) {
+            if (testcase[i] === "1") {
+                state = 1;
+            }
+        } else if (state === 1) {
+            if (testcase[i] === "0") {
+                state = 2;
+            }
+        } else if (state === 2) {
+            if (testcase[i] === "1") {
+                state = 3;
+            } else {
+                state = 0;
+            }
+        } else if (state === 3) {
+            if (testcase[i] === "0") {
+                state = 2;
+                count++;
+            } else {
+                state = 1;
+            }
+        }
+    }
+
+    const KBSR_ADDR = 0xFE00;
+    const KBDR_ADDR = 0xFE02;
+    const DSR_ADDR = 0xFE04;
+    const DDR_ADDR = 0xFE06;
+
+    // init KBSR_ADDR and DSR_ADDR
+    lc3.memory[KBSR_ADDR] = 0x8000;
+    lc3.memory[DSR_ADDR] = 0x8000;
+
+    // init lc3.result (a string to receive the output)
+    lc3.result = "";
+
+    // convert testcase into a generator with each char
+    function* input() {
+        for (let i = 0; i < testcase.length; i++) {
+            yield testcase[i];
+        }
+    }
+    const gen = input();
+
+    // add listener to memory[xFE02]
+    // if read memory[xFE02], set memory[xFE02] to the next char of testcase
+    // add listener to memory[xFE06]
+    // if write memory[xFE06], append the char to lc3.result
+    lc3.memory = new Proxy(lc3.memory, {
+        get: function(target, prop, receiver) {
+            if (prop === KBDR_ADDR.toString()) {
+                const next = gen.next();
+                if (next.done) {
+                    // if done, set KBSR_ADDR to 0
+                    lc3.memory[KBSR_ADDR] = 0;
+                    return 0;
+                } else {
+                    lc3.memory[KBSR_ADDR] = 0x8000;
+                    return next.value.charCodeAt(0);
+                }
+            }
+            return Reflect.get(...arguments);
+        },
+        set: function(target, prop, value, receiver) {
+            if (prop === DDR_ADDR.toString()) {
+                lc3.result += String.fromCharCode(value);
+                lc3.memory[DSR_ADDR] = 0x8000;
+            }
+            return Reflect.set(...arguments);
+        }
+    });
+
+    return String(count);
+    `,
+    ansCode: `return lc3.result;`,
+    testCases: "1010y, 101010y, 1000001010y, 101111010y, 10101010001011101010y",
+  },
   自定义: {
     testCode: '',
     ansCode: '',
